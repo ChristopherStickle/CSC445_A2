@@ -28,18 +28,36 @@ Support a command line argument controlling whether to pretend to drop 1 percent
 import java.net.*;
 import java.io.*;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import static java.nio.file.Files.*;
+
 
 public class Sever {
     static final int PORT = 27050;
     static final int WINDOW_SIZE = 4;
-    static final int TIMEOUT = 1000;
+    static final int TIMEOUT = 2000;
+    static final String cachePath = "Cache/";
+    /*
+    ---------------------------------------------
+    |   seqNum  |      data      |   checksum   |
+    |  2 Bytes  |    512 Bytes   |   2 Bytes    |
+    ---------------------------------------------
+    */
+    static final int SEQ_SIZE = 2;
+    static final int DATA_SIZE = 1024;
+    static final int CHECKSUM_SIZE = 2;
+    static final boolean DROP_PACKETS = false;
+    static final int DROP_PERCENT = 1;
+
     public static void main(String[] args) {
         try {
             System.out.println("Server started");
             ServerSocket serverSocket = new ServerSocket(PORT);
             while (true) {
-                long key = 1L;
+                // ---------------------------------------------------------------------------------------------
+                //Connection - Key Exchange - URL Exchange |
+                //------------------------------------------
                 // Wait for a connection
                 Socket client = serverSocket.accept();
                 System.out.println("Connection from " + client.getInetAddress());
@@ -47,33 +65,35 @@ public class Sever {
                 DataInputStream inStream = new DataInputStream(client.getInputStream());
                 DataOutputStream outStream = new DataOutputStream(client.getOutputStream());
                 // get the KEY
-                key = inStream.readLong();
+                int key = inStream.readInt();
+                System.out.println("Key: " + key);
                 // get the URL
                 String url = inStream.readUTF();
-                // gets the corresponding page/file using HTTP.
-                URL urlObj = new URL(url);
-                HttpURLConnection connection = (HttpURLConnection) urlObj.openConnection();
-                connection.setRequestMethod("GET");
-                connection.connect();
-                // get the file
-                InputStream file = connection.getInputStream();
-                System.out.println("File size: " + file.available() + " bytes");
-                // turn the file into a byte array
-                byte[] fileBytes = new byte[file.available()];
-                file.read(fileBytes);
+                // ---------------------------------------------------------------------------------------------
+                // Cache Check - File Fetch - File Size Check |
+                //---------------------------------------------
+                // check to see if the file is in the cache
+                // if so fetch the file from the cache to send
+                // if not, fetch the file from the URL and save it to the cache
+                String fileName = url.substring(url.lastIndexOf('/') + 1);
+                Path filePath = Path.of(cachePath+fileName);
+                File file = new File(String.valueOf(filePath));
+                if (!file.exists()){
+                    System.out.println("File not in cache, fetching from URL...");
+                    fetchFile(url, fileName);
+                }
+                byte[] fileBytes = readAllBytes(filePath);
+                System.out.println("File size: " + fileBytes.length + " bytes");
+                //----------------------------------------------------------------------------------------------
                 // determine how many frames are needed to send the file
                 /*
                 Must fit in 2^16 - 1 = 65535 Frames
-                65535 Frames * 512 Bytes = 33553920 Bytes = 33.55392 MB
+                65535 Frames * 1024 Bytes = 67107840 Bytes = 67.107840 MB
                 33.55392 MB is the max file size that can be sent without
                  cycling back to 0 for the sequence number.
-                ---------------------------------------------
-                |   seqNum  |      data      |   checksum   |
-                |  2 Bytes  |    512 Bytes   |   2 Bytes    |
-                ---------------------------------------------
                 */
                 // check file size, if it is too big, send an error message
-                if(fileBytes.length > 33554432){
+                if(fileBytes.length > 67107840){
                     System.out.println("[X] ERROR - File is too large to send!");
                     // send the error message and close the connection
                     outStream.writeUTF("ERROR - File is too large to send!");
@@ -83,34 +103,40 @@ public class Sever {
                     outStream.close();
                     continue;
                 }
+                //----------------------------------------------------------------------------------------------
                 // encrypt the data
-                //fileBytes = xor(fileBytes, key); //TODO: FIX THIS -- xor is not producing expected results
+                fileBytes = xor(fileBytes, key);
+                //----------------------------------------------------------------------------------------------
                 // determine how many frames will be needed to send the file
-                int numFrames = (int) Math.ceil((double) fileBytes.length / 512);
+                int numFrames = (int) Math.ceil((double) fileBytes.length / DATA_SIZE);
                 System.out.println("Number of frames to send: " + numFrames);
                 // create the frames
                 ArrayList<byte[]> frames = new ArrayList<>();
                 for(int i = 0; i < numFrames; i++){
-                    ByteBuffer buf = ByteBuffer.allocate(516);
+                    ByteBuffer buf = ByteBuffer.allocate(SEQ_SIZE + DATA_SIZE + CHECKSUM_SIZE);
                     // add the sequence number, using the first 2 bytes
                     buf.putShort((short) i);
                     // add the data, using the next 512 bytes
-                    if(i < numFrames-1){buf.put(fileBytes, i * 512, 512);}
-                    else{buf.put(fileBytes, i * 512, fileBytes.length - (i * 512));}
+                    if(i < numFrames-1){buf.put(fileBytes, i * DATA_SIZE, DATA_SIZE);}
+                    else{buf.put(fileBytes, i * DATA_SIZE, fileBytes.length - (i * DATA_SIZE));}
                     // add the checksum, using the last 2 bytes
-                    byte[] data = new byte[512];
-                    buf.position(2);
-                    buf.get(data, 0, 512);
+                    byte[] data = new byte[DATA_SIZE];
+                    buf.position(SEQ_SIZE);
+                    buf.get(data, 0, DATA_SIZE);
                     buf.putShort(calculateChecksum(data));
                     // add the frame to the frame array
                     frames.add(buf.array());
                 }
+                // send the number of frames to the client and wait for an ACK
+                outStream.writeInt(numFrames);
+                inStream.readInt();
                 // send the file to the client using GBN sliding window-----------------------------------------
-                short seqNum = 0;
-                byte[] ackBytes = new byte[2];
+                System.out.println("Sending file...");
+                short seqNumBase = 0;
+                byte[] ackBytes = new byte[SEQ_SIZE];
                 while(true){
                     // send the window
-                    for (int i = seqNum; i < seqNum + WINDOW_SIZE && seqNum<numFrames; i++) {
+                    for (int i = seqNumBase; i < seqNumBase + WINDOW_SIZE && seqNumBase<numFrames; i++) {
                         outStream.write(frames.get(i));
                         System.out.println("Sent packet " + i);
                         // if the last frame is sent, break
@@ -122,12 +148,12 @@ public class Sever {
                         client.setSoTimeout(TIMEOUT);
                         // read the ack, 2 bytes
                         inStream.read(ackBytes);
-                        // convert the ack to an int
+                        // convert the ack to a short
                         short ack = ByteBuffer.wrap(ackBytes).getShort();
                         System.out.println(" Received ACK " + ack);
                         // if the ack was in the window, move the window forward to the 1 + ack
-                        if(ack >= seqNum && ack < seqNum + WINDOW_SIZE){
-                            seqNum = (short) (ack + 1);
+                        if(ack >= seqNumBase && ack < seqNumBase + WINDOW_SIZE){
+                            seqNumBase = (short) (ack + 1);
                         }
                         // if the ack was the final frame, we're done
                         if(ack == ( numFrames - 1)){break;}
@@ -149,17 +175,35 @@ public class Sever {
             System.out.println(e);
         }
     }
-    private static byte[] xor(byte[] msg, long key) {
+
+    private static void fetchFile(String url, String fileName) throws IOException {
+        // gets the corresponding page/file using HTTP and saves it to the Cache folder
+        URL urlObj = new URL(url);
+        HttpURLConnection connection = (HttpURLConnection) urlObj.openConnection();
+        connection.setRequestMethod("GET");
+        connection.connect();
+        // get the file
+        InputStream fis = connection.getInputStream();
+        // save the file to the Cache folder
+        FileOutputStream fos = new FileOutputStream(cachePath + fileName);
+        byte[] buffer = new byte[1024];
+        int bytesRead = 0;
+        while ((bytesRead = fis.read(buffer)) != -1) {
+            fos.write(buffer, 0, bytesRead);
+        }
+        fos.close();
+    }
+    private static byte[] xor(byte[] msg, int key) {
         byte[] xorMsg = new byte[msg.length];
         for (int i = 0; i < msg.length; i++) {
-            xorMsg[i] = (byte) (msg[i] ^ (key >> (i % 8)));
+            xorMsg[i] = (byte) (msg[i] ^ key);
         }
         return xorMsg;
     }
     public static short calculateChecksum(byte[] data) {
         // Sum all the bytes in the data portion of the packet and return the one's complement
         short sum = 0;
-        for (int i = 0; i < data.length; i++) {
+        for (int i = 0; i < DATA_SIZE; i++) {
             sum += data[i];
         }
         return (short) ~sum;

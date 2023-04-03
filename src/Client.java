@@ -35,13 +35,22 @@ import java.util.Random;
 public class Client {
     static final int PORT = 27050;
     String host = "localhost";
-    static String url = "https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png";
-    //REACT LOGO:   https://brandslogos.com/wp-content/uploads/images/large/react-logo-1.png
-    //GOOGLE LOGO:  https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png
+    /*REACT LOGO:*/   //static String url = "https://brandslogos.com/wp-content/uploads/images/large/react-logo-1.png";
+    /*GOOGLE LOGO:*/  static String url = "https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png";
+    static String fileName = url.substring(url.lastIndexOf('/') + 1);
+    /*
+    ---------------------------------------------
+    |   seqNum  |      data      |   checksum   |
+    |  2 Bytes  |    512 Bytes   |   2 Bytes    |
+    ---------------------------------------------
+    */
+    static final int SEQ_SIZE = 2;
+    static final int DATA_SIZE = 1024;
+    static final int CHECKSUM_SIZE = 2;
 
 
     public static void main(String[] args) {
-        ArrayList<byte[]> file = new ArrayList<>();
+        ArrayList<byte[]> fileBytes = new ArrayList<>();
         try {
             System.out.println("Client started");
             // create a socket
@@ -49,53 +58,72 @@ public class Client {
             // create in and out streams for the socket
             DataInputStream inStream = new DataInputStream(socket.getInputStream());
             DataOutputStream outStream = new DataOutputStream(socket.getOutputStream());
-            // create and send a random key
-            long key = new Random().nextLong();
-            outStream.writeLong(key);
+            // create and send a random in bounded by the max value of a byte [-128, 127]
+            int key = new Random().nextInt(Byte.MAX_VALUE);
+            System.out.println("Sending key [" + key + "]");
+            outStream.writeInt(key);
             // send the URL
             outStream.writeUTF(url);
-            /*
-            ---------------------------------------------
-            |   seqNum  |      data      |   checksum   |
-            |  2 Bytes  |    512 Bytes   |   2 Bytes    |
-            ---------------------------------------------
-            */
-            // get the file via sliding window go-back-n protocol ---------------------------------------------------
-            short seqNum = -1; // the sequence number of the highest consecutive frame received; -1 is none received
-            byte[] ack = new byte[2]; // the ack to send
-            byte[] data = new byte[512]; // the data in the frame
-            byte[] frame = new byte[516]; // the frame
-            while (socket.isConnected()) {
-                //listen for frame
+            //listen for the number of expected frames and ACK it back
+            int numFrames = inStream.readInt();
+            System.out.println("Expecting [" + numFrames + "] frames...");
+            outStream.writeInt(numFrames);
+            //-------------------------------------------------------------------------------------------------------
+            //  get the file via sliding window go-back-n protocol |
+            //------------------------------------------------------
+            byte[] frame = new byte[SEQ_SIZE + DATA_SIZE + CHECKSUM_SIZE];
+            byte[] data = new byte[DATA_SIZE];
+            byte[] seqNum = new byte[SEQ_SIZE];
+            byte[] ack = new byte[SEQ_SIZE]; // the ack to send
+            byte[] checksum = new byte[CHECKSUM_SIZE]; // the checksum of the data
+            short nextSeqNum = 0; // the sequence number of the next frame expected
+            while (!socket.isClosed() && fileBytes.size() < numFrames){
+                // listen for the next frame
                 inStream.read(frame);
-                // get the sequence number, and the data, and the checksum
-                short frameSeqNum = ByteBuffer.wrap(frame, 0, 2).getShort();
-                System.arraycopy(frame, 2, data, 0, 512);
-                short checksum = ByteBuffer.wrap(frame, 514, 2).getShort();
-                System.out.println("Received frame " + frameSeqNum);
-                // check if the frame is corrupt
-                if (isCorrupt(data, checksum)) {
-                    System.out.println(" Frame " + frameSeqNum + " is corrupt -- Dropping frame");
-                } else if (frameSeqNum == (1 + seqNum)) {
-                    // if the frame is not corrupt, and it is the next frame in the sequence, add its data to the file
-                    file.add(data);
-                    // send an ack for the frame
-                    ByteBuffer.wrap(ack).putShort(frameSeqNum);
+                System.arraycopy(frame, 0, seqNum, 0, SEQ_SIZE);
+                System.arraycopy(frame, SEQ_SIZE, data, 0, DATA_SIZE);
+                System.arraycopy(frame, SEQ_SIZE+DATA_SIZE, checksum, 0, CHECKSUM_SIZE);
+                System.out.println("Received frame [" + ByteBuffer.wrap(seqNum).getShort() + "]");
+                // frame is expected this and isn't corrupt
+                if(!isCorrupt(data, ByteBuffer.wrap(checksum).getShort()) && ByteBuffer.wrap(seqNum).getShort() == nextSeqNum){
+                    System.out.println("Looks good!");
+                    //deliver data to fileBytes
+                    System.arraycopy(frame, SEQ_SIZE, data, 0, DATA_SIZE);
+                    fileBytes.add(data);
+                    data = new byte[DATA_SIZE];
+                    //send ACK of the next sequence number
+                    ack = ByteBuffer.allocate(SEQ_SIZE).putShort(nextSeqNum).array();
                     outStream.write(ack);
-                    System.out.println(" Looks good! : Sent ACK " + frameSeqNum);
-                    seqNum++;
+                    System.out.println("Sent ACK [" + ByteBuffer.wrap(ack).getShort() + "]");
+                    //increment expected sequence number
+                    nextSeqNum++;
                 } else {
-                    // if the frame is not corrupt, but it is not the next frame in the sequence,
-                    // send an ack for the last frame received
-                    // handle the case where the first frame received is not the first frame in the sequence
-                    if (seqNum != -1) {
-                        ByteBuffer.wrap(ack).putShort((seqNum));
-                        outStream.write(ack);
-                        System.out.println(" Out of order frame " + frameSeqNum + " -- Dropping frame : Sent ACK " + seqNum);
-                    } else System.out.println(" Special case!: Drop frame " + frameSeqNum);
+                    // Drop frame
+                    System.out.println("[X] Corrupt or out of order frame! Dropping...");
+                    // send ACK of the next sequence number
+                    if (nextSeqNum == 0) {
+                        ack = ByteBuffer.allocate(SEQ_SIZE).putShort((short) 0).array();
+                    } else {
+                        ack = ByteBuffer.allocate(SEQ_SIZE).putShort((short) (nextSeqNum - 1)).array();
+                    }
+                    outStream.write(ack);
+                    System.out.println("Sent ACK [" + ByteBuffer.wrap(ack).getShort() + "]");
+                }
+            }
+            //decrypt the file
+            for (byte[] bytes : fileBytes) {
+                for (int i = 0; i < bytes.length; i++) {
+                    bytes[i] = (byte) (bytes[i] ^ key);
                 }
             }
             // ------------------------------------------------------------------------------------------------------
+            //open the image in the default image viewer -- Windows only
+            try {
+                Runtime.getRuntime().exec("rundll32 url.dll,FileProtocolHandler " + fileName);
+            } catch (Exception e) {
+                e.setStackTrace(e.getStackTrace());
+                System.out.println(e);
+            }
             // close the connection
             socket.close();
             inStream.close();
@@ -106,8 +134,8 @@ public class Client {
         }
         // get the bytes from the file ArrayList and write them to a file
         try {
-            FileOutputStream fos = new FileOutputStream("image.png");
-            for (byte[] bytes : file) {
+            FileOutputStream fos = new FileOutputStream(fileName);
+            for (byte[] bytes : fileBytes) {
                 fos.write(bytes);
             }
             fos.close();
@@ -116,13 +144,13 @@ public class Client {
             System.out.println(e);
         }
     }
-    private static byte[] xor(byte[] msg, long key) {
+    /*private static byte[] xor(byte[] msg, int key) {
         byte[] xorMsg = new byte[msg.length];
         for (int i = 0; i < msg.length; i++) {
-            xorMsg[i] = (byte) (msg[i] ^ (key >> (i % 8)));
+            xorMsg[i] = (byte) (msg[i] ^ key);
         }
         return xorMsg;
-    }
+    }*/
     public static short calculateChecksum(byte[] data) {
         // Sum all the bytes in the data portion of the packet and return the one's complement
         short sum = 0;
