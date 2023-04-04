@@ -30,6 +30,8 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Random;
+
 import static java.nio.file.Files.*;
 
 
@@ -55,7 +57,7 @@ public class Sever {
             System.out.println("Server started");
             ServerSocket serverSocket = new ServerSocket(PORT);
             while (true) {
-                // ---------------------------------------------------------------------------------------------
+                //----------------------------------------------------------------------------------------------
                 //Connection - Key Exchange - URL Exchange |
                 //------------------------------------------
                 // Wait for a connection
@@ -69,13 +71,14 @@ public class Sever {
                 System.out.println("Key: " + key);
                 // get the URL
                 String url = inStream.readUTF();
-                // ---------------------------------------------------------------------------------------------
+                //----------------------------------------------------------------------------------------------
                 // Cache Check - File Fetch - File Size Check |
                 //---------------------------------------------
                 // check to see if the file is in the cache
                 // if so fetch the file from the cache to send
                 // if not, fetch the file from the URL and save it to the cache
                 String fileName = url.substring(url.lastIndexOf('/') + 1);
+                fileName=fileName.replace(":","_");
                 Path filePath = Path.of(cachePath+fileName);
                 File file = new File(String.valueOf(filePath));
                 if (!file.exists()){
@@ -85,7 +88,8 @@ public class Sever {
                 byte[] fileBytes = readAllBytes(filePath);
                 System.out.println("File size: " + fileBytes.length + " bytes");
                 //----------------------------------------------------------------------------------------------
-                // determine how many frames are needed to send the file
+                // determine how many frames are needed to send the file |
+                //--------------------------------------------------------
                 /*
                 Must fit in 2^16 - 1 = 65535 Frames
                 65535 Frames * 1024 Bytes = 67107840 Bytes = 67.107840 MB
@@ -104,10 +108,12 @@ public class Sever {
                     continue;
                 }
                 //----------------------------------------------------------------------------------------------
-                // encrypt the data
+                // encrypt the data |
+                //-------------------
                 fileBytes = xor(fileBytes, key);
                 //----------------------------------------------------------------------------------------------
-                // determine how many frames will be needed to send the file
+                // determine how many frames will be needed to send the file |
+                //------------------------------------------------------------
                 int numFrames = (int) Math.ceil((double) fileBytes.length / DATA_SIZE);
                 System.out.println("Number of frames to send: " + numFrames);
                 // create the frames
@@ -130,16 +136,25 @@ public class Sever {
                 // send the number of frames to the client and wait for an ACK
                 outStream.writeInt(numFrames);
                 inStream.readInt();
-                // send the file to the client using GBN sliding window-----------------------------------------
+                //----------------------------------------------------------------------------------------------
+                // send the file to the client using GBN sliding window |
+                //-------------------------------------------------------
                 System.out.println("Sending file...");
                 short seqNumBase = 0;
                 byte[] ackBytes = new byte[SEQ_SIZE];
+                Random rand = new Random();
                 while(true){
                     // send the window
                     for (int i = seqNumBase; i < seqNumBase + WINDOW_SIZE && seqNumBase<numFrames; i++) {
-                        outStream.write(frames.get(i));
-                        System.out.println("Sent packet " + i);
-                        // if the last frame is sent, break
+                        // determine if the packet should be dropped
+                        if(DROP_PACKETS && rand.nextInt(99) < DROP_PERCENT){
+                            System.out.println("Dropped packet: [" + i + "]");
+                        } else {
+                            // send the frame
+                            outStream.write(frames.get(i));
+                            System.out.println("Sent packet: [" + i + "]");
+                            // if the last frame is sent, break
+                        }
                         if(i == numFrames - 1){break;}
                     }
                     // receive one or more ACKs
@@ -164,7 +179,8 @@ public class Sever {
                 }
                 System.out.println("File transfer complete!");
                 //-------------------------------------------------------------------------------------------
-                // close the connection
+                // close the connection |
+                //-----------------------
                 client.close();
                 inStream.close();
                 outStream.close();
@@ -176,6 +192,9 @@ public class Sever {
         }
     }
 
+    ///----------------///
+    /// HELPER METHODS ///
+    ///----------------///
     private static void fetchFile(String url, String fileName) throws IOException {
         // gets the corresponding page/file using HTTP and saves it to the Cache folder
         URL urlObj = new URL(url);
@@ -207,8 +226,5 @@ public class Sever {
             sum += data[i];
         }
         return (short) ~sum;
-    }
-    public static boolean isCorrupt(byte[] packet, short checksum) {
-        return checksum != calculateChecksum(packet);
     }
 }

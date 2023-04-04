@@ -34,7 +34,7 @@ import java.util.Random;
 
 public class Client {
     static final int PORT = 27050;
-    String host = "localhost";
+    static String HOST = "cs.oswego.edu";
     /*REACT LOGO:*/   //static String url = "https://brandslogos.com/wp-content/uploads/images/large/react-logo-1.png";
     /*GOOGLE LOGO:*/  static String url = "https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png";
     static String fileName = url.substring(url.lastIndexOf('/') + 1);
@@ -47,14 +47,19 @@ public class Client {
     static final int SEQ_SIZE = 2;
     static final int DATA_SIZE = 1024;
     static final int CHECKSUM_SIZE = 2;
+    static final boolean DROP_PACKETS = false;
+    static final int DROP_PERCENT = 1;
 
 
     public static void main(String[] args) {
         ArrayList<byte[]> fileBytes = new ArrayList<>();
+        //-------------------------------------------------------------------------------------------------------
+        // setup the socket and streams, send the key and URL |
+        //-----------------------------------------------------
         try {
             System.out.println("Client started");
             // create a socket
-            Socket socket = new Socket("localhost", PORT);
+            Socket socket = new Socket(HOST, PORT);
             // create in and out streams for the socket
             DataInputStream inStream = new DataInputStream(socket.getInputStream());
             DataOutputStream outStream = new DataOutputStream(socket.getOutputStream());
@@ -77,15 +82,22 @@ public class Client {
             byte[] ack = new byte[SEQ_SIZE]; // the ack to send
             byte[] checksum = new byte[CHECKSUM_SIZE]; // the checksum of the data
             short nextSeqNum = 0; // the sequence number of the next frame expected
+            int sleepyCount = 0;
+            Random rand = new Random();
+            long startTime = System.nanoTime();
             while (!socket.isClosed() && fileBytes.size() < numFrames){
                 // listen for the next frame
+                sleepyCount++;
+                Thread.sleep(1);
                 inStream.read(frame);
                 System.arraycopy(frame, 0, seqNum, 0, SEQ_SIZE);
                 System.arraycopy(frame, SEQ_SIZE, data, 0, DATA_SIZE);
                 System.arraycopy(frame, SEQ_SIZE+DATA_SIZE, checksum, 0, CHECKSUM_SIZE);
                 System.out.println("Received frame [" + ByteBuffer.wrap(seqNum).getShort() + "]");
                 // frame is expected this and isn't corrupt
-                if(!isCorrupt(data, ByteBuffer.wrap(checksum).getShort()) && ByteBuffer.wrap(seqNum).getShort() == nextSeqNum){
+                short frameSeqNum = ByteBuffer.wrap(seqNum).getShort();
+                short frameChecksum = ByteBuffer.wrap(checksum).getShort();
+                if(!isCorrupt(data, frameChecksum) && frameSeqNum == nextSeqNum){
                     System.out.println("Looks good!");
                     //deliver data to fileBytes
                     System.arraycopy(frame, SEQ_SIZE, data, 0, DATA_SIZE);
@@ -93,8 +105,12 @@ public class Client {
                     data = new byte[DATA_SIZE];
                     //send ACK of the next sequence number
                     ack = ByteBuffer.allocate(SEQ_SIZE).putShort(nextSeqNum).array();
-                    outStream.write(ack);
-                    System.out.println("Sent ACK [" + ByteBuffer.wrap(ack).getShort() + "]");
+                    if (DROP_PACKETS && rand.nextInt(99) < DROP_PERCENT) {
+                        System.out.println("[X] Dropping ACK [" + ByteBuffer.wrap(ack).getShort() + "]");
+                    } else {
+                        outStream.write(ack);
+                        System.out.println("Sent ACK [" + ByteBuffer.wrap(ack).getShort() + "]");
+                    }
                     //increment expected sequence number
                     nextSeqNum++;
                 } else {
@@ -106,24 +122,40 @@ public class Client {
                     } else {
                         ack = ByteBuffer.allocate(SEQ_SIZE).putShort((short) (nextSeqNum - 1)).array();
                     }
-                    outStream.write(ack);
-                    System.out.println("Sent ACK [" + ByteBuffer.wrap(ack).getShort() + "]");
+                    if (DROP_PACKETS && rand.nextInt(99) < DROP_PERCENT) {
+                        System.out.println("[X] Dropping ACK [" + ByteBuffer.wrap(ack).getShort() + "]");
+                    } else {
+                        outStream.write(ack);
+                        System.out.println("Sent ACK [" + ByteBuffer.wrap(ack).getShort() + "]");
+                    }
                 }
             }
+            //-------------------------------------------------------------------------------------------------------
+            //  calculations, decryption  |
+            //-----------------------------
+            long endTime = System.nanoTime();
+            double duration = (double) (endTime - startTime) / 1_000_000_000; // in seconds
+            System.out.println("Sleepy count: " + sleepyCount);
+            System.out.println("File of size " + (fileBytes.size()*DATA_SIZE) + " bytes " + " received in " + duration + " seconds");
+            // Throughput in Mb/s
+            System.out.println("Throughput: " + (((fileBytes.size()*DATA_SIZE) * 8) / (duration))/1_000_000 + " Mb/s");
+
             //decrypt the file
             for (byte[] bytes : fileBytes) {
                 for (int i = 0; i < bytes.length; i++) {
                     bytes[i] = (byte) (bytes[i] ^ key);
                 }
             }
-            // ------------------------------------------------------------------------------------------------------
-            //open the image in the default image viewer -- Windows only
-            try {
+            //-------------------------------------------------------------------------------------------------------
+            //open the image in the default image viewer -- Windows only |
+            //------------------------------------------------------------
+            /*try {
                 Runtime.getRuntime().exec("rundll32 url.dll,FileProtocolHandler " + fileName);
             } catch (Exception e) {
                 e.setStackTrace(e.getStackTrace());
                 System.out.println(e);
-            }
+            }*/
+
             // close the connection
             socket.close();
             inStream.close();
@@ -132,7 +164,9 @@ public class Client {
             e.setStackTrace(e.getStackTrace());
             System.out.println(e);
         }
-        // get the bytes from the file ArrayList and write them to a file
+        //-------------------------------------------------------------------------------------------------------
+        // write the file to disk |
+        //-------------------------
         try {
             FileOutputStream fos = new FileOutputStream(fileName);
             for (byte[] bytes : fileBytes) {
@@ -144,6 +178,11 @@ public class Client {
             System.out.println(e);
         }
     }
+
+    ///----------------///
+    /// HELPER METHODS ///
+    ///----------------///
+
     /*private static byte[] xor(byte[] msg, int key) {
         byte[] xorMsg = new byte[msg.length];
         for (int i = 0; i < msg.length; i++) {
