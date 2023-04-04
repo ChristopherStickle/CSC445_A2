@@ -28,8 +28,10 @@ Support a command line argument controlling whether to pretend to drop 1 percent
 import java.net.*;
 import java.io.*;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Random;
 
 import static java.nio.file.Files.*;
@@ -37,7 +39,7 @@ import static java.nio.file.Files.*;
 
 public class Sever {
     static final int PORT = 27050;
-    static final int WINDOW_SIZE = 4;
+    static final int WINDOW_SIZE = 128;
     static final int TIMEOUT = 2000;
     static final String cachePath = "Cache/";
     /*
@@ -49,28 +51,40 @@ public class Sever {
     static final int SEQ_SIZE = 2;
     static final int DATA_SIZE = 1024;
     static final int CHECKSUM_SIZE = 2;
+    static final int PACKET_SIZE = SEQ_SIZE + DATA_SIZE + CHECKSUM_SIZE;
     static final boolean DROP_PACKETS = false;
     static final int DROP_PERCENT = 1;
-
-    public static void main(String[] args) {
-        try {
-            System.out.println("Server started");
-            ServerSocket serverSocket = new ServerSocket(PORT);
-            while (true) {
+    static final int MAX_CONSECUTIVE_TIMEOUTS = 4;
+    public static void main(String[] args) throws IOException {
+        System.out.println("Server started");
+        while (true) {
+            try {
+                DatagramSocket serverSocket = new DatagramSocket(PORT);
                 //----------------------------------------------------------------------------------------------
                 //Connection - Key Exchange - URL Exchange |
                 //------------------------------------------
                 // Wait for a connection
-                Socket client = serverSocket.accept();
-                System.out.println("Connection from " + client.getInetAddress());
-                // create in and out streams for the socket
-                DataInputStream inStream = new DataInputStream(client.getInputStream());
-                DataOutputStream outStream = new DataOutputStream(client.getOutputStream());
+                System.out.println("Waiting for connection...");
+                DatagramPacket packet = new DatagramPacket(new byte[PACKET_SIZE], PACKET_SIZE);
+                serverSocket.receive(packet);
+                InetAddress clientAddress = packet.getAddress();
+                int clientPort = packet.getPort();
+                System.out.println("Connection from " + clientAddress + ":" + clientPort);
+                System.out.println("Client says: " + new String(packet.getData()));
+                // say hello to the client
+                packet = new DatagramPacket("hello".getBytes(), "hello".getBytes().length, clientAddress, clientPort);
+                serverSocket.send(packet);
                 // get the KEY
-                int key = inStream.readInt();
+                byte[] keyBytes = new DatagramPacket(new byte[PACKET_SIZE], PACKET_SIZE).getData();
+                serverSocket.receive(new DatagramPacket(keyBytes, PACKET_SIZE));
+                int key = ByteBuffer.wrap(keyBytes).getInt();
                 System.out.println("Key: " + key);
                 // get the URL
-                String url = inStream.readUTF();
+                byte[] urlBytes = new DatagramPacket(new byte[PACKET_SIZE], PACKET_SIZE).getData();
+                serverSocket.receive(new DatagramPacket(urlBytes, PACKET_SIZE));
+                String url = new String(urlBytes, StandardCharsets.UTF_8);
+                url = url.substring(0, url.indexOf('\0'));
+                System.out.println("URL: " + url);
                 //----------------------------------------------------------------------------------------------
                 // Cache Check - File Fetch - File Size Check |
                 //---------------------------------------------
@@ -78,10 +92,10 @@ public class Sever {
                 // if so fetch the file from the cache to send
                 // if not, fetch the file from the URL and save it to the cache
                 String fileName = url.substring(url.lastIndexOf('/') + 1);
-                fileName=fileName.replace(":","_");
-                Path filePath = Path.of(cachePath+fileName);
+                fileName = fileName.replace(":", "_");
+                Path filePath = Path.of(cachePath + fileName);
                 File file = new File(String.valueOf(filePath));
-                if (!file.exists()){
+                if (!file.exists()) {
                     System.out.println("File not in cache, fetching from URL...");
                     fetchFile(url, fileName);
                 }
@@ -97,7 +111,7 @@ public class Sever {
                  cycling back to 0 for the sequence number.
                 */
                 // check file size, if it is too big, send an error message
-                if(fileBytes.length > 67107840){
+                /*if(fileBytes.length > 67107840){
                     System.out.println("[X] ERROR - File is too large to send!");
                     // send the error message and close the connection
                     outStream.writeUTF("ERROR - File is too large to send!");
@@ -106,7 +120,7 @@ public class Sever {
                     inStream.close();
                     outStream.close();
                     continue;
-                }
+                }*/
                 //----------------------------------------------------------------------------------------------
                 // encrypt the data |
                 //-------------------
@@ -118,13 +132,16 @@ public class Sever {
                 System.out.println("Number of frames to send: " + numFrames);
                 // create the frames
                 ArrayList<byte[]> frames = new ArrayList<>();
-                for(int i = 0; i < numFrames; i++){
+                for (int i = 0; i < numFrames; i++) {
                     ByteBuffer buf = ByteBuffer.allocate(SEQ_SIZE + DATA_SIZE + CHECKSUM_SIZE);
                     // add the sequence number, using the first 2 bytes
                     buf.putShort((short) i);
                     // add the data, using the next 512 bytes
-                    if(i < numFrames-1){buf.put(fileBytes, i * DATA_SIZE, DATA_SIZE);}
-                    else{buf.put(fileBytes, i * DATA_SIZE, fileBytes.length - (i * DATA_SIZE));}
+                    if (i < numFrames - 1) {
+                        buf.put(fileBytes, i * DATA_SIZE, DATA_SIZE);
+                    } else {
+                        buf.put(fileBytes, i * DATA_SIZE, fileBytes.length - (i * DATA_SIZE));
+                    }
                     // add the checksum, using the last 2 bytes
                     byte[] data = new byte[DATA_SIZE];
                     buf.position(SEQ_SIZE);
@@ -134,8 +151,11 @@ public class Sever {
                     frames.add(buf.array());
                 }
                 // send the number of frames to the client and wait for an ACK
-                outStream.writeInt(numFrames);
-                inStream.readInt();
+                System.out.println("Sending number of frames...");
+                serverSocket.send(new DatagramPacket(ByteBuffer.allocate(4).putInt(numFrames).array(), 4, clientAddress, clientPort));
+                byte[] numOfFrameBytes = new byte[4];
+                serverSocket.receive(new DatagramPacket(numOfFrameBytes, 4));
+                System.out.println("Received ACK: " + ByteBuffer.wrap(numOfFrameBytes).getInt());
                 //----------------------------------------------------------------------------------------------
                 // send the file to the client using GBN sliding window |
                 //-------------------------------------------------------
@@ -143,55 +163,62 @@ public class Sever {
                 short seqNumBase = 0;
                 byte[] ackBytes = new byte[SEQ_SIZE];
                 Random rand = new Random();
-                while(true){
+                int timeoutCount = 0;
+                while (true) {
                     // send the window
-                    for (int i = seqNumBase; i < seqNumBase + WINDOW_SIZE && seqNumBase<numFrames; i++) {
+                    for (int i = seqNumBase; i < seqNumBase + WINDOW_SIZE && seqNumBase < numFrames; i++) {
                         // determine if the packet should be dropped
-                        if(DROP_PACKETS && rand.nextInt(99) < DROP_PERCENT){
+                        if (DROP_PACKETS && rand.nextInt(99) < DROP_PERCENT) {
                             System.out.println("Dropped packet: [" + i + "]");
                         } else {
                             // send the frame
-                            outStream.write(frames.get(i));
+                            serverSocket.send(new DatagramPacket(frames.get(i), frames.get(i).length, clientAddress, clientPort));
                             System.out.println("Sent packet: [" + i + "]");
                             // if the last frame is sent, break
                         }
-                        if(i == numFrames - 1){break;}
+                        if (i == numFrames - 1) {
+                            break;
+                        }
                     }
                     // receive one or more ACKs
-                    try{
+                    try {
                         // set the timeout
-                        client.setSoTimeout(TIMEOUT);
+                        serverSocket.setSoTimeout(TIMEOUT);
                         // read the ack, 2 bytes
-                        inStream.read(ackBytes);
+                        ackBytes = new byte[SEQ_SIZE];
+                        serverSocket.receive(new DatagramPacket(ackBytes, SEQ_SIZE));
+                        timeoutCount = 0;
                         // convert the ack to a short
                         short ack = ByteBuffer.wrap(ackBytes).getShort();
                         System.out.println(" Received ACK " + ack);
                         // if the ack was in the window, move the window forward to the 1 + ack
-                        if(ack >= seqNumBase && ack < seqNumBase + WINDOW_SIZE){
+                        if (ack >= seqNumBase && ack < seqNumBase + WINDOW_SIZE) {
                             seqNumBase = (short) (ack + 1);
                         }
                         // if the ack was the final frame, we're done
-                        if(ack == ( numFrames - 1)){break;}
-                    }catch (SocketTimeoutException e){
+                        if (ack == (numFrames - 1)) {
+                            break;
+                        }
+                    } catch (SocketTimeoutException e) {
                         // if the ack is not received in time, resend the window
+                        timeoutCount++;
                         System.out.println("[X] ERROR - Timeout occurred, resending window...");
+                        if (timeoutCount == MAX_CONSECUTIVE_TIMEOUTS) {
+                            System.out.println("[X] ERROR - Maximum number of timeouts reached, closing connection...");
+                            break;
+                        }
                     }
                 }
                 System.out.println("File transfer complete!");
                 //-------------------------------------------------------------------------------------------
                 // close the connection |
                 //-----------------------
-                client.close();
-                inStream.close();
-                outStream.close();
+                serverSocket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         }
-        catch (Exception e) {
-            e.setStackTrace(e.getStackTrace());
-            System.out.println(e);
-        }
     }
-
     ///----------------///
     /// HELPER METHODS ///
     ///----------------///

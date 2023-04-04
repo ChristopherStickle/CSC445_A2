@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="2fb6ace5-e9b4-4c92-961e-d0b0fd6c1cc3" name="Changes" comment="Sliding window, xor encode/decode, checksum, open file on receipt working. &#10;&#10;TODO: add option for a 1% probability to drop a packet">
+    <list default="true" id="2fb6ace5-e9b4-4c92-961e-d0b0fd6c1cc3" name="Changes" comment="saving work before I shift from Socket -&gt; DatagramSocket/Packet">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/Client.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/Client.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/Sever.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/Sever.java" afterDir="false" />
@@ -97,7 +97,7 @@
       <workItem from="1680533402592" duration="91000" />
       <workItem from="1680533586753" duration="16416000" />
       <workItem from="1680609510444" duration="4018000" />
-      <workItem from="1680614446705" duration="2194000" />
+      <workItem from="1680614446705" duration="13785000" />
     </task>
     <task id="LOCAL-00001" summary="Basic image search and send setup.">
       <created>1679079815630</created>
@@ -113,7 +113,14 @@
       <option name="project" value="LOCAL" />
       <updated>1680536487113</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="saving work before I shift from Socket -&gt; DatagramSocket/Packet">
+      <created>1680617258610</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1680617258610</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -133,7 +140,8 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Basic image search and send setup." />
     <MESSAGE value="Sliding window, xor encode/decode, checksum, open file on receipt working. &#10;&#10;TODO: add option for a 1% probability to drop a packet" />
-    <option name="LAST_COMMIT_MESSAGE" value="Sliding window, xor encode/decode, checksum, open file on receipt working. &#10;&#10;TODO: add option for a 1% probability to drop a packet" />
+    <MESSAGE value="saving work before I shift from Socket -&gt; DatagramSocket/Packet" />
+    <option name="LAST_COMMIT_MESSAGE" value="saving work before I shift from Socket -&gt; DatagramSocket/Packet" />
   </component>
   <component name="XDebuggerManager">
     <watches-manager>
