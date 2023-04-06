@@ -54,7 +54,7 @@ public class Sever {
     static final int PACKET_SIZE = SEQ_SIZE + DATA_SIZE + CHECKSUM_SIZE;
     static final boolean DROP_PACKETS = false;
     static final int DROP_PERCENT = 1;
-    static final int MAX_CONSECUTIVE_TIMEOUTS = 4;
+    static final int MAX_CONSECUTIVE_TIMEOUTS = 3;
     public static void main(String[] args) throws IOException {
         System.out.println("Server started");
         while (true) {
@@ -136,7 +136,7 @@ public class Sever {
                     ByteBuffer buf = ByteBuffer.allocate(SEQ_SIZE + DATA_SIZE + CHECKSUM_SIZE);
                     // add the sequence number, using the first 2 bytes
                     buf.putShort((short) i);
-                    // add the data, using the next 512 bytes
+                    // add the data, using the next DATA_SIZE worth of bytes
                     if (i < numFrames - 1) {
                         buf.put(fileBytes, i * DATA_SIZE, DATA_SIZE);
                     } else {

@@ -34,7 +34,7 @@ import java.util.Random;
 
 public class Client {
     static final int PORT = 27050;
-    static String HOST = "moxie.cs.oswego.edu";
+    static String HOST = "cs.oswego.edu";
     /*REACT LOGO:*/   static String url = "https://brandslogos.com/wp-content/uploads/images/large/react-logo-1.png";
     /*GOOGLE LOGO:*/  //static String url = "https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png";
     static String fileName = url.substring(url.lastIndexOf('/') + 1);
@@ -170,12 +170,12 @@ public class Client {
             //-------------------------------------------------------------------------------------------------------
             //open the image in the default image viewer -- Windows only |
             //------------------------------------------------------------
-            /*try {
+            try {
                 Runtime.getRuntime().exec("rundll32 url.dll,FileProtocolHandler " + fileName);
             } catch (Exception e) {
                 e.setStackTrace(e.getStackTrace());
                 System.out.println(e);
-            }*/
+            }
 
             // close the connection
             socket.close();
