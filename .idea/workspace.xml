@@ -4,16 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="2fb6ace5-e9b4-4c92-961e-d0b0fd6c1cc3" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/uiDesigner.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/CSC445_A2.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/Client.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/Sever.java" afterDir="false" />
+    <list default="true" id="2fb6ace5-e9b4-4c92-961e-d0b0fd6c1cc3" name="Changes" comment="Done">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Client.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/Client.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Sever.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/Sever.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -28,6 +22,11 @@
     </option>
   </component>
   <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="master" />
+      </map>
+    </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="MarkdownSettingsMigration">
@@ -49,6 +48,7 @@
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
     &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
@@ -71,6 +71,9 @@
       <list>
         <item itemvalue="Application.Client" />
         <item itemvalue="Application.Sever" />
+        <item itemvalue="Application.Sever" />
+        <item itemvalue="Application.Client" />
+        <item itemvalue="Application.Client" />
       </list>
     </recent_temporary>
   </component>
@@ -88,11 +91,76 @@
       <workItem from="1678045340953" duration="460000" />
       <workItem from="1678045817181" duration="10000" />
       <workItem from="1678367375362" duration="40000" />
-      <workItem from="1678979650479" duration="3117000" />
+      <workItem from="1678979650479" duration="11465000" />
+      <workItem from="1679250434538" duration="1113000" />
+      <workItem from="1679253277575" duration="30615000" />
+      <workItem from="1680533402592" duration="91000" />
+      <workItem from="1680533586753" duration="16416000" />
+      <workItem from="1680609510444" duration="4018000" />
+      <workItem from="1680614446705" duration="13811000" />
+      <workItem from="1680634817501" duration="175000" />
+      <workItem from="1680697538026" duration="84000" />
+      <workItem from="1680705105795" duration="1706000" />
+      <workItem from="1680788204482" duration="1651000" />
     </task>
+    <task id="LOCAL-00001" summary="Basic image search and send setup.">
+      <created>1679079815630</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1679079815630</updated>
+    </task>
+    <task id="LOCAL-00002" summary="Sliding window, xor encode/decode, checksum, open file on receipt working. &#10;&#10;TODO: add option for a 1% probability to drop a packet">
+      <created>1680536487113</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1680536487113</updated>
+    </task>
+    <task id="LOCAL-00003" summary="saving work before I shift from Socket -&gt; DatagramSocket/Packet">
+      <created>1680617258610</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1680617258610</updated>
+    </task>
+    <task id="LOCAL-00004" summary="Done">
+      <created>1680633430080</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1680633430080</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="Basic image search and send setup." />
+    <MESSAGE value="Sliding window, xor encode/decode, checksum, open file on receipt working. &#10;&#10;TODO: add option for a 1% probability to drop a packet" />
+    <MESSAGE value="saving work before I shift from Socket -&gt; DatagramSocket/Packet" />
+    <MESSAGE value="Done" />
+    <option name="LAST_COMMIT_MESSAGE" value="Done" />
+  </component>
+  <component name="XDebuggerManager">
+    <watches-manager>
+      <configuration name="Application">
+        <watch expression="key" />
+        <watch expression="key" />
+      </configuration>
+    </watches-manager>
   </component>
 </project>
